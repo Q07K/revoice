@@ -1,0 +1,237 @@
+import json
+import logging
+import threading
+import time
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from types import TracebackType
+
+from fastapi import Depends, UploadFile
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.core.database import SessionLocal, get_db
+from app.core.exceptions import ConflictError, NotFoundError
+from app.engines.base import ConversionSpec, EngineError, audio_duration_seconds
+from app.engines.factory import get_engine_set
+from app.engines.waveform import compute_waveform_peaks
+from app.features.covers import crud
+from app.features.covers.models import CoverJob, CoverStatus
+from app.features.voices import crud as voices_crud
+from app.features.voices.models import VoiceStatus
+from app.features.voices.service import validate_audio_filename
+from app.jobs.runner import JobRunner, get_job_runner
+from app.storage.files import FileStorage, get_file_storage
+
+logger = logging.getLogger(__name__)
+
+
+class CoverService:
+    def __init__(self, db: Session, storage: FileStorage, runner: JobRunner) -> None:
+        self._db = db
+        self._storage = storage
+        self._runner = runner
+
+    def create(self, voice_id: int, transpose: int, song: UploadFile) -> CoverJob:
+        voice = voices_crud.get_voice(self._db, voice_id)
+        if voice is None:
+            raise NotFoundError(f"Voice {voice_id} not found.")
+        if voice.status is not VoiceStatus.READY:
+            raise ConflictError("The voice must finish training before generating covers.")
+        title = validate_audio_filename(song.filename)
+        song_path = self._storage.save_upload(song, self._storage.songs_dir())
+        cover = crud.create_cover(self._db, voice_id, title, str(song_path), transpose)
+        self._runner.submit(partial(execute_cover, cover.id))
+        return cover
+
+    def get(self, cover_id: int) -> CoverJob:
+        cover = crud.get_cover(self._db, cover_id)
+        if cover is None:
+            raise NotFoundError(f"Cover {cover_id} not found.")
+        return cover
+
+    def list_all(self, voice_id: int | None = None) -> Sequence[CoverJob]:
+        return crud.list_covers(self._db, voice_id)
+
+    def retry(self, cover_id: int) -> CoverJob:
+        cover = self.get(cover_id)
+        if cover.status is not CoverStatus.FAILED:
+            raise ConflictError("실패한 커버만 다시 시도할 수 있어요.")
+        voice = voices_crud.get_voice(self._db, cover.voice_id)
+        if voice is None or voice.status is not VoiceStatus.READY:
+            raise ConflictError("보이스가 사용 가능 상태일 때만 다시 시도할 수 있어요.")
+        if not Path(cover.song_path).exists():
+            raise ConflictError("원곡 파일이 남아있지 않아요. 새 커버로 다시 만들어주세요.")
+        crud.reset_for_retry(self._db, cover_id)
+        self._runner.submit(partial(execute_cover, cover_id))
+        return self.get(cover_id)
+
+    def get_result(self, cover_id: int) -> tuple[Path, str]:
+        """Return the rendered file path and a download filename."""
+        cover = self.get(cover_id)
+        if cover.status is not CoverStatus.COMPLETED or cover.result_path is None:
+            raise ConflictError("This cover has not finished rendering yet.")
+        download_name = f"{Path(cover.title).stem}_cover{Path(cover.result_path).suffix}"
+        return Path(cover.result_path), download_name
+
+    def get_waveform(self, cover_id: int) -> list[float]:
+        """Peaks of the rendered audio, cached alongside the result file."""
+        result_path, _ = self.get_result(cover_id)
+        cache_path = result_path.parent / "waveform.json"
+        if cache_path.exists() and cache_path.stat().st_mtime >= result_path.stat().st_mtime:
+            cached: list[float] = json.loads(cache_path.read_text())
+            return cached
+        try:
+            peaks = compute_waveform_peaks(result_path)
+        except EngineError as error:
+            raise ConflictError(f"파형을 계산할 수 없어요: {error}") from error
+        cache_path.write_text(json.dumps(peaks))
+        return peaks
+
+
+def execute_cover(cover_id: int) -> None:
+    """Background entrypoint: separate -> convert -> mix, persisting each stage."""
+    with SessionLocal() as db:
+        cover = crud.get_cover(db, cover_id)
+        if cover is None:
+            return
+        voice = voices_crud.get_voice(db, cover.voice_id)
+        if voice is None or voice.model_path is None:
+            crud.set_failed(db, cover_id, "Voice model is unavailable.")
+            return
+        song_path = Path(cover.song_path)
+        transpose = cover.transpose
+        model_path = Path(voice.model_path)
+    try:
+        result = _render_cover(cover_id, song_path, model_path, transpose)
+    except Exception as exc:
+        logger.exception("Cover job %s failed.", cover_id)
+        with SessionLocal() as db:
+            crud.set_failed(db, cover_id, str(exc))
+        return
+    with SessionLocal() as db:
+        crud.set_completed(db, cover_id, str(result))
+
+
+# Progress budget for a cover job: separation dominates wall-clock on CPU.
+_SEPARATION_RANGE = (0.05, 0.55)
+_CONVERSION_RANGE = (0.6, 0.9)
+_MIXING_AT = 0.92
+_STAGE_OVERHEAD_S = 20.0
+_TICK_INTERVAL_S = 2.0
+
+
+@dataclass(frozen=True)
+class _StagePlan:
+    status: CoverStatus
+    progress_range: tuple[float, float]
+    estimate_seconds: float | None
+    tail_seconds: float
+    """Estimated duration of the stages that come after this one."""
+
+
+class _StageTicker:
+    """Writes time-based progress/ETA while a stage that emits no progress
+    signal runs (audio-separator and Applio infer are silent on pipes).
+
+    Progress within the stage advances by elapsed/estimate and is capped just
+    short of the stage end so the bar never lies about being done.
+    """
+
+    def __init__(self, cover_id: int, plan: _StagePlan) -> None:
+        self._cover_id = cover_id
+        self._plan = plan
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> "_StageTicker":
+        initial_eta = (
+            None
+            if self._plan.estimate_seconds is None
+            else self._plan.estimate_seconds + self._plan.tail_seconds
+        )
+        _set_stage(self._cover_id, self._plan.status, self._plan.progress_range[0], initial_eta)
+        self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._stop.set()
+        self._thread.join(timeout=_TICK_INTERVAL_S * 3)
+
+    def _run(self) -> None:
+        estimate = self._plan.estimate_seconds
+        if estimate is None or estimate <= 0:
+            return
+        low, high = self._plan.progress_range
+        started = time.monotonic()
+        while not self._stop.wait(_TICK_INTERVAL_S):
+            elapsed = time.monotonic() - started
+            fraction = min(elapsed / estimate, 0.98)
+            eta = max(estimate - elapsed, 2.0) + self._plan.tail_seconds
+            _set_stage(self._cover_id, self._plan.status, low + (high - low) * fraction, eta)
+
+
+def _render_cover(cover_id: int, song_path: Path, model_path: Path, transpose: int) -> Path:
+    engines = get_engine_set()
+    work_dir = get_file_storage().cover_dir(cover_id)
+    separation_estimate, conversion_estimate = _stage_estimates(song_path)
+
+    separation_plan = _StagePlan(
+        status=CoverStatus.SEPARATING,
+        progress_range=_SEPARATION_RANGE,
+        estimate_seconds=separation_estimate,
+        tail_seconds=(conversion_estimate or 0.0) + 5.0,
+    )
+    with _StageTicker(cover_id, separation_plan):
+        separated = engines.separator.separate(song_path, work_dir, _ignore_progress)
+
+    conversion_plan = _StagePlan(
+        status=CoverStatus.CONVERTING,
+        progress_range=_CONVERSION_RANGE,
+        estimate_seconds=conversion_estimate,
+        tail_seconds=5.0,
+    )
+    spec = ConversionSpec(
+        source_vocals=separated.vocals,
+        model_path=model_path,
+        output_path=work_dir / "converted_vocals.wav",
+        transpose=transpose,
+    )
+    with _StageTicker(cover_id, conversion_plan):
+        converted = engines.converter.convert(spec)
+
+    _set_stage(cover_id, CoverStatus.MIXING, _MIXING_AT, None)
+    return engines.mixer.mix(converted, separated.instrumental, work_dir / "cover.wav")
+
+
+def _stage_estimates(song_path: Path) -> tuple[float | None, float | None]:
+    """Per-stage time estimates from the song duration; (None, None) if unknown."""
+    duration = audio_duration_seconds(song_path)
+    if duration is None:
+        return None, None
+    settings = get_settings()
+    separation = _STAGE_OVERHEAD_S + duration * settings.separation_speed_factor
+    conversion = _STAGE_OVERHEAD_S / 2 + duration * settings.conversion_speed_factor
+    return separation, conversion
+
+
+def _ignore_progress(progress: float) -> None:
+    """Separator progress is time-estimated by _StageTicker instead."""
+
+
+def _set_stage(
+    cover_id: int, status: CoverStatus, progress: float, eta_seconds: float | None
+) -> None:
+    with SessionLocal() as db:
+        crud.set_stage(db, cover_id, status, progress, eta_seconds)
+
+
+def get_cover_service(db: Session = Depends(get_db)) -> CoverService:
+    return CoverService(db=db, storage=get_file_storage(), runner=get_job_runner())

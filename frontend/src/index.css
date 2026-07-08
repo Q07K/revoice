@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Warm Studio theme — 따뜻한 그레이지 바탕 + 깊은 페트롤 포인트 */
+:root {
+  --background: #efede8;
+  --foreground: #2b2a26;
+  --card: #fdfcf9;
+  --card-foreground: #2b2a26;
+  --popover: #fdfcf9;
+  --popover-foreground: #2b2a26;
+  --primary: #16626b;
+  --primary-foreground: #f3fbfb;
+  --secondary: #e7e4dd;
+  --secondary-foreground: #2b2a26;
+  --muted: #ecebe4;
+  --muted-foreground: #8b887c;
+  --accent: #d9ecee;
+  --accent-foreground: #114d54;
+  --destructive: #b3452f;
+  --destructive-foreground: #fdf3f0;
+  --border: #e2dfd6;
+  --input: #e2dfd6;
+  --ring: #16626b;
+  --radius: 0.875rem;
+
+  --sidebar: #e7e4dd;
+  --sidebar-foreground: #2b2a26;
+  --sidebar-primary: #16626b;
+  --sidebar-primary-foreground: #f3fbfb;
+  --sidebar-accent: #fdfcf9;
+  --sidebar-accent-foreground: #2b2a26;
+  --sidebar-border: #dbd7cc;
+  --sidebar-ring: #16626b;
+
+  --status-ready: #1c6b4a;
+  --status-ready-bg: #dcefe7;
+  --status-running: #16626b;
+  --status-running-bg: #d9ecee;
+  --status-draft: #79766a;
+  --status-draft-bg: #ecebe4;
+  --status-failed: #b3452f;
+  --status-failed-bg: #f6e3de;
+  --chart-1: #16626b;
+  --chart-2: #1c6b4a;
+  --chart-3: #b3452f;
+  --chart-4: #8b887c;
+  --chart-5: #2b2a26;
+}
+
+.dark {
+  --background: #1f1e1b;
+  --foreground: #ece9e2;
+  --card: #282723;
+  --card-foreground: #ece9e2;
+  --popover: #282723;
+  --popover-foreground: #ece9e2;
+  --primary: #57aab2;
+  --primary-foreground: #0c2f33;
+  --secondary: #34322d;
+  --secondary-foreground: #ece9e2;
+  --muted: #2f2d29;
+  --muted-foreground: #a5a196;
+  --accent: #1d3a3e;
+  --accent-foreground: #9fd3d9;
+  --destructive: #d4735e;
+  --destructive-foreground: #2b120b;
+  --border: #383630;
+  --input: #383630;
+  --ring: #57aab2;
+
+  --sidebar: #262521;
+  --sidebar-foreground: #ece9e2;
+  --sidebar-primary: #57aab2;
+  --sidebar-primary-foreground: #0c2f33;
+  --sidebar-accent: #34322d;
+  --sidebar-accent-foreground: #ece9e2;
+  --sidebar-border: #383630;
+  --sidebar-ring: #57aab2;
+
+  --status-ready: #7dc9a4;
+  --status-ready-bg: #1d3a2c;
+  --status-running: #9fd3d9;
+  --status-running-bg: #1d3a3e;
+  --status-draft: #a5a196;
+  --status-draft-bg: #2f2d29;
+  --status-failed: #e39a89;
+  --status-failed-bg: #3d211a;
+  --chart-1: #57aab2;
+  --chart-2: #7dc9a4;
+  --chart-3: #e39a89;
+  --chart-4: #a5a196;
+  --chart-5: #ece9e2;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-status-ready: var(--status-ready);
+  --color-status-ready-bg: var(--status-ready-bg);
+  --color-status-running: var(--status-running);
+  --color-status-running-bg: var(--status-running-bg);
+  --color-status-draft: var(--status-draft);
+  --color-status-draft-bg: var(--status-draft-bg);
+  --color-status-failed: var(--status-failed);
+  --color-status-failed-bg: var(--status-failed-bg);
+
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', 'Pretendard Variable', Pretendard,
+    'Malgun Gothic', system-ui, -apple-system, sans-serif;
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* 진행률 신호가 없는 단계(보컬 분리 등)에 쓰는 불확정 프로그레스 바 */
+@keyframes revoice-slide {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(420%);
+  }
+}
+.progress-indeterminate {
+  animation: revoice-slide 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate {
+    animation: none;
+  }
+}
