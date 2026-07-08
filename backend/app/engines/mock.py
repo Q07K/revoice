@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 
 from app.engines.base import (
+    CancelCheck,
+    CommandCancelled,
     ConversionSpec,
     ProgressCallback,
     SeparationResult,
@@ -17,9 +19,13 @@ class MockTrainer:
         self._steps = steps
         self._step_seconds = step_seconds
 
-    def train(self, spec: TrainingSpec, on_progress: ProgressCallback) -> Path:
+    def train(
+        self, spec: TrainingSpec, on_progress: ProgressCallback, should_cancel: CancelCheck
+    ) -> Path:
         spec.output_dir.mkdir(parents=True, exist_ok=True)
         for step in range(1, self._steps + 1):
+            if should_cancel():
+                raise CommandCancelled()
             time.sleep(self._step_seconds)
             on_progress(step / self._steps)
         model_path = spec.output_dir / f"{spec.model_name}.pth"
@@ -49,7 +55,14 @@ class MockSeparator:
 
 
 class MockMixer:
-    def mix(self, vocals: Path, instrumental: Path, output_path: Path) -> Path:
+    def mix(
+        self,
+        vocals: Path,
+        instrumental: Path,
+        output_path: Path,
+        vocal_gain: float,
+        instrumental_gain: float,
+    ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(vocals, output_path)
         return output_path

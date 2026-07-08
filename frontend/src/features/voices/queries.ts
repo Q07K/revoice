@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { fetchTrainings, startTraining } from '@/api/trainings'
+import { cancelTraining, fetchTrainings, startTraining } from '@/api/trainings'
 import type { TrainingCreateInput } from '@/api/trainings'
 import type { TrainingJob, VoiceDetail } from '@/api/types'
 import { createVoice, deleteVoice, fetchVoice, fetchVoices, uploadDatasetFiles } from '@/api/voices'
@@ -69,6 +69,18 @@ export function useStartTraining(voiceId: number) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: TrainingCreateInput) => startTraining(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: voiceKeys.trainings(voiceId) })
+      void queryClient.invalidateQueries({ queryKey: voiceKeys.detail(voiceId) })
+      void queryClient.invalidateQueries({ queryKey: voiceKeys.all })
+    },
+  })
+}
+
+export function useCancelTraining(voiceId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (jobId: number) => cancelTraining(jobId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: voiceKeys.trainings(voiceId) })
       void queryClient.invalidateQueries({ queryKey: voiceKeys.detail(voiceId) })

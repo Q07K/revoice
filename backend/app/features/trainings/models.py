@@ -12,6 +12,7 @@ class TrainingStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class TrainingJob(Base):

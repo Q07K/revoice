@@ -12,13 +12,37 @@ def _utcnow() -> datetime:
 
 
 def create_cover(
-    db: Session, voice_id: int, title: str, song_path: str, transpose: int
+    db: Session,
+    voice_id: int,
+    title: str,
+    song_path: str,
+    transpose: int,
+    vocal_gain: float,
 ) -> CoverJob:
-    cover = CoverJob(voice_id=voice_id, title=title, song_path=song_path, transpose=transpose)
+    cover = CoverJob(
+        voice_id=voice_id,
+        title=title,
+        song_path=song_path,
+        transpose=transpose,
+        vocal_gain=vocal_gain,
+    )
     db.add(cover)
     db.commit()
     db.refresh(cover)
     return cover
+
+
+def set_vocal_gain(db: Session, cover_id: int, vocal_gain: float) -> None:
+    cover = db.get(CoverJob, cover_id)
+    if cover is None:
+        return
+    cover.vocal_gain = vocal_gain
+    db.commit()
+
+
+def delete_cover(db: Session, cover: CoverJob) -> None:
+    db.delete(cover)
+    db.commit()
 
 
 def get_cover(db: Session, cover_id: int) -> CoverJob | None:

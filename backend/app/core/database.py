@@ -37,6 +37,7 @@ def get_db() -> Generator[Session, None, None]:
 _SQLITE_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("training_jobs", "eta_seconds", "FLOAT"),
     ("cover_jobs", "eta_seconds", "FLOAT"),
+    ("cover_jobs", "vocal_gain", "FLOAT DEFAULT 1.5"),
 ]
 
 

@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, Form, UploadFile
 from fastapi.responses import FileResponse
 
 from app.features.covers.models import CoverJob
-from app.features.covers.schemas import CoverRead, WaveformRead
+from app.features.covers.schemas import (
+    VOCAL_GAIN_MAX,
+    VOCAL_GAIN_MIN,
+    CoverRead,
+    RemixRequest,
+    WaveformRead,
+)
 from app.features.covers.service import CoverService, get_cover_service
 
 router = APIRouter(prefix="/covers", tags=["covers"])
@@ -18,8 +24,9 @@ def create_cover(
     voice_id: Annotated[int, Form()],
     service: ServiceDep,
     transpose: Annotated[int, Form(ge=-24, le=24)] = 0,
+    vocal_gain: Annotated[float, Form(ge=VOCAL_GAIN_MIN, le=VOCAL_GAIN_MAX)] = 1.5,
 ) -> CoverJob:
-    return service.create(voice_id, transpose, song)
+    return service.create(voice_id, transpose, vocal_gain, song)
 
 
 @router.get("", response_model=list[CoverRead])
@@ -32,9 +39,19 @@ def get_cover(cover_id: int, service: ServiceDep) -> CoverJob:
     return service.get(cover_id)
 
 
+@router.delete("/{cover_id}", status_code=204)
+def delete_cover(cover_id: int, service: ServiceDep) -> None:
+    service.delete(cover_id)
+
+
 @router.post("/{cover_id}/retry", response_model=CoverRead, status_code=202)
 def retry_cover(cover_id: int, service: ServiceDep) -> CoverJob:
     return service.retry(cover_id)
+
+
+@router.post("/{cover_id}/remix", response_model=CoverRead)
+def remix_cover(cover_id: int, body: RemixRequest, service: ServiceDep) -> CoverJob:
+    return service.remix(cover_id, body.vocal_gain)
 
 
 @router.get("/{cover_id}/audio")

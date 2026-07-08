@@ -26,6 +26,8 @@ class CoverJob(Base):
     title: Mapped[str] = mapped_column(String(255))
     song_path: Mapped[str] = mapped_column(String(500))
     transpose: Mapped[int] = mapped_column(default=0)
+    # 반주 대비 변환 보컬의 볼륨 배수 (1.0 = 원본, >1 = 보컬 강조).
+    vocal_gain: Mapped[float] = mapped_column(default=1.5)
     status: Mapped[CoverStatus] = mapped_column(
         Enum(CoverStatus, native_enum=False, length=20), default=CoverStatus.PENDING
     )

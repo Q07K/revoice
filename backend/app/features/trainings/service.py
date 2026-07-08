@@ -9,13 +9,14 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import SessionLocal, get_db
 from app.core.exceptions import ConflictError, InvalidInputError, NotFoundError
-from app.engines.base import ProgressCallback, TrainingSpec
+from app.engines.base import CommandCancelled, ProgressCallback, TrainingSpec
 from app.engines.factory import get_engine_set
 from app.features.trainings import crud
-from app.features.trainings.models import TrainingJob
+from app.features.trainings.models import TrainingJob, TrainingStatus
 from app.features.trainings.schemas import TrainingCreate
 from app.features.voices import crud as voices_crud
 from app.features.voices.models import VoiceStatus
+from app.jobs import cancellation
 from app.jobs.runner import JobRunner, get_job_runner
 from app.storage.files import get_file_storage
 
@@ -49,6 +50,13 @@ class TrainingService:
     def list_all(self, voice_id: int | None = None) -> Sequence[TrainingJob]:
         return crud.list_jobs(self._db, voice_id)
 
+    def cancel(self, job_id: int) -> TrainingJob:
+        job = self.get(job_id)
+        if job.status not in (TrainingStatus.PENDING, TrainingStatus.RUNNING):
+            raise ConflictError("진행 중인 학습만 중단할 수 있어요.")
+        cancellation.request_cancel(job_id)
+        return job
+
 
 def execute_training(job_id: int) -> None:
     """Background entrypoint: runs the trainer and persists the outcome."""
@@ -59,14 +67,33 @@ def execute_training(job_id: int) -> None:
         voice_id = job.voice_id
         spec = _build_spec(voice_id, job.epochs)
         crud.set_running(db, job_id)
+    should_cancel = partial(cancellation.is_cancel_requested, job_id)
     try:
-        model_path = get_engine_set().trainer.train(spec, _progress_writer(job_id))
+        model_path = get_engine_set().trainer.train(
+            spec, _progress_writer(job_id), should_cancel
+        )
+    except CommandCancelled:
+        logger.info("Training job %s cancelled by user.", job_id)
+        with SessionLocal() as db:
+            crud.set_cancelled(db, job_id)
+            # Cancelling isn't a failure: keep an earlier trained model usable,
+            # otherwise drop back to draft so the voice can be trained again.
+            voice = voices_crud.get_voice(db, voice_id)
+            settled = (
+                VoiceStatus.READY
+                if voice is not None and voice.model_path is not None
+                else VoiceStatus.DRAFT
+            )
+            voices_crud.set_voice_status(db, voice_id, settled)
+        return
     except Exception as exc:
         logger.exception("Training job %s failed.", job_id)
         with SessionLocal() as db:
             crud.set_failed(db, job_id, str(exc))
             voices_crud.set_voice_status(db, voice_id, VoiceStatus.FAILED)
         return
+    finally:
+        cancellation.clear(job_id)
     with SessionLocal() as db:
         crud.set_completed(db, job_id)
         voices_crud.set_voice_status(db, voice_id, VoiceStatus.READY, str(model_path))

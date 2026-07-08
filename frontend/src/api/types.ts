@@ -1,6 +1,11 @@
 export type VoiceStatus = 'draft' | 'training' | 'ready' | 'failed'
 
-export type TrainingStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type TrainingStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export type CoverStatus =
   | 'pending'
@@ -47,6 +52,7 @@ export interface CoverJob {
   voice_id: number
   title: string
   transpose: number
+  vocal_gain: number
   status: CoverStatus
   progress: number
   eta_seconds: number | null

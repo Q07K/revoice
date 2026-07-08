@@ -25,9 +25,12 @@ import { useCreateCover } from '@/features/covers/queries'
 import { useVoices } from '@/features/voices/queries'
 import { formatBytes, formatTranspose } from '@/lib/format'
 
+const DEFAULT_VOCAL_GAIN = 1.5
+
 export function CoverCreatePage() {
   const [voiceId, setVoiceId] = useState<number | null>(null)
   const [transpose, setTranspose] = useState(0)
+  const [vocalGain, setVocalGain] = useState(DEFAULT_VOCAL_GAIN)
   const [song, setSong] = useState<File | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -41,7 +44,7 @@ export function CoverCreatePage() {
   const submit = () => {
     if (voiceId === null || song === null) return
     createCover.mutate(
-      { voiceId, transpose, song },
+      { voiceId, transpose, vocalGain, song },
       {
         onSuccess: () => {
           toast.success('커버 생성을 시작했어요. 라이브러리에서 진행 상황을 볼 수 있어요.')
@@ -145,6 +148,26 @@ export function CoverCreatePage() {
             />
             <p className="text-xs text-muted-foreground">
               남성 곡을 여성 보이스로 부르면 +12, 반대는 -12 근처가 자연스러워요.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <Label>보컬 볼륨</Label>
+              <span className="text-sm font-semibold text-primary tabular-nums">
+                {vocalGain.toFixed(1)}×
+              </span>
+            </div>
+            <Slider
+              min={0.5}
+              max={2.5}
+              step={0.1}
+              value={[vocalGain]}
+              onValueChange={(values) => setVocalGain(values[0] ?? DEFAULT_VOCAL_GAIN)}
+            />
+            <p className="text-xs text-muted-foreground">
+              변환된 보컬이 반주에 묻히면 키우세요. 완성 후 라이브러리에서도 다시 조정할 수
+              있어요.
             </p>
           </div>
 

@@ -70,3 +70,13 @@ def set_failed(db: Session, job_id: int, error: str) -> None:
     job.eta_seconds = None
     job.finished_at = _utcnow()
     db.commit()
+
+
+def set_cancelled(db: Session, job_id: int) -> None:
+    job = db.get(TrainingJob, job_id)
+    if job is None:
+        return
+    job.status = TrainingStatus.CANCELLED
+    job.eta_seconds = None
+    job.finished_at = _utcnow()
+    db.commit()

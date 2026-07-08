@@ -31,6 +31,7 @@ export function trainingStatusMeta(status: TrainingStatus): StatusMeta {
     running: { label: '학습 중', kind: 'running' },
     completed: { label: '완료', kind: 'ready' },
     failed: { label: '실패', kind: 'failed' },
+    cancelled: { label: '중단됨', kind: 'draft' },
   }
   return meta[status]
 }

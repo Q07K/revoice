@@ -14,9 +14,16 @@ export function useAudioPlayer(src: string): AudioPlayer {
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
 
+  // src가 바뀌면(재믹싱으로 캐시 버스터가 갱신되면) 기존 오디오를 버리고
+  // 상태를 초기화해, 다음 재생 때 새 파일을 로드하도록 한다.
   useEffect(() => {
-    return () => audioRef.current?.pause()
-  }, [])
+    setPlaying(false)
+    setProgress(0)
+    return () => {
+      audioRef.current?.pause()
+      audioRef.current = null
+    }
+  }, [src])
 
   const ensureAudio = (): HTMLAudioElement => {
     if (audioRef.current === null) {

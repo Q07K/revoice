@@ -24,3 +24,8 @@ def list_trainings(service: ServiceDep, voice_id: int | None = None) -> list[Tra
 @router.get("/{job_id}", response_model=TrainingRead)
 def get_training(job_id: int, service: ServiceDep) -> TrainingJob:
     return service.get(job_id)
+
+
+@router.post("/{job_id}/cancel", response_model=TrainingRead, status_code=202)
+def cancel_training(job_id: int, service: ServiceDep) -> TrainingJob:
+    return service.cancel(job_id)

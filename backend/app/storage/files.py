@@ -39,6 +39,11 @@ class FileStorage:
         shutil.rmtree(self._root / "datasets" / str(voice_id), ignore_errors=True)
         shutil.rmtree(self._root / "models" / str(voice_id), ignore_errors=True)
 
+    def remove_cover_data(self, cover_id: int, song_path: Path | None) -> None:
+        shutil.rmtree(self._root / "covers" / str(cover_id), ignore_errors=True)
+        if song_path is not None:
+            song_path.unlink(missing_ok=True)
+
     @staticmethod
     def _ensure(path: Path) -> Path:
         path.mkdir(parents=True, exist_ok=True)

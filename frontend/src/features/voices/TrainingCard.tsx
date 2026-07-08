@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+import { Ban, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -16,22 +16,45 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { useStartTraining, useVoiceTrainings } from '@/features/voices/queries'
+import {
+  useCancelTraining,
+  useStartTraining,
+  useVoiceTrainings,
+} from '@/features/voices/queries'
 import { formatDuration } from '@/lib/format'
 
 const DEFAULT_EPOCHS = 100
 const MAX_EPOCHS = 500
 
-function LatestJob({ job }: { job: TrainingJob }) {
+interface LatestJobProps {
+  job: TrainingJob
+  onCancel: () => void
+  canceling: boolean
+}
+
+function LatestJob({ job, onCancel, canceling }: LatestJobProps) {
+  const active = job.status === 'running' || job.status === 'pending'
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">
-          최근 학습 · {job.epochs} epochs
-        </span>
-        <StatusBadge meta={trainingStatusMeta(job.status)} />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">최근 학습 · {job.epochs} epochs</span>
+        <div className="flex items-center gap-2">
+          <StatusBadge meta={trainingStatusMeta(job.status)} />
+          {active && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs text-status-failed hover:text-status-failed"
+              onClick={onCancel}
+              disabled={canceling}
+            >
+              <Ban className="size-3.5" />
+              {canceling ? '중단 중…' : '중단'}
+            </Button>
+          )}
+        </div>
       </div>
-      {(job.status === 'running' || job.status === 'pending') && (
+      {active && (
         <>
           <Progress value={job.progress * 100} />
           <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
@@ -55,10 +78,19 @@ export function TrainingCard({ voice }: { voice: VoiceDetail }) {
   const [epochs, setEpochs] = useState(DEFAULT_EPOCHS)
   const trainings = useVoiceTrainings(voice.id)
   const startTraining = useStartTraining(voice.id)
+  const cancelTraining = useCancelTraining(voice.id)
 
   const latestJob = trainings.data?.[0]
   const isTraining = voice.status === 'training'
   const hasDataset = voice.dataset_files.length > 0
+
+  const handleCancel = () => {
+    if (latestJob === undefined) return
+    cancelTraining.mutate(latestJob.id, {
+      onSuccess: () => toast.success('학습 중단을 요청했어요. 곧 정리됩니다.'),
+      onError: (error) => toast.error(error.message),
+    })
+  }
 
   const submit = () => {
     startTraining.mutate(
@@ -80,7 +112,13 @@ export function TrainingCard({ voice }: { voice: VoiceDetail }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {latestJob !== undefined && <LatestJob job={latestJob} />}
+        {latestJob !== undefined && (
+          <LatestJob
+            job={latestJob}
+            onCancel={handleCancel}
+            canceling={cancelTraining.isPending}
+          />
+        )}
         {voice.status === 'ready' && (
           <p className="text-sm text-status-ready">
             학습이 끝났어요.{' '}

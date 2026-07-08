@@ -14,3 +14,7 @@ export function fetchTrainings(voiceId?: number): Promise<TrainingJob[]> {
 export function startTraining(input: TrainingCreateInput): Promise<TrainingJob> {
   return postJson<TrainingJob>('/trainings', input)
 }
+
+export function cancelTraining(jobId: number): Promise<TrainingJob> {
+  return postJson<TrainingJob>(`/trainings/${jobId}/cancel`, {})
+}

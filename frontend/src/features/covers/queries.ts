@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createCover, fetchCoverWaveform, fetchCovers, retryCover } from '@/api/covers'
+import {
+  createCover,
+  deleteCover,
+  fetchCoverWaveform,
+  fetchCovers,
+  remixCover,
+  retryCover,
+} from '@/api/covers'
 import type { CoverCreateInput } from '@/api/covers'
 import type { CoverJob } from '@/api/types'
 
@@ -51,6 +58,23 @@ export function useRetryCover() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (coverId: number) => retryCover(coverId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: coverKeys.all }),
+  })
+}
+
+export function useRemixCover() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { coverId: number; vocalGain: number }) =>
+      remixCover(input.coverId, input.vocalGain),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: coverKeys.all }),
+  })
+}
+
+export function useDeleteCover() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (coverId: number) => deleteCover(coverId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: coverKeys.all }),
   })
 }

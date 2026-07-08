@@ -63,6 +63,18 @@ def test_full_cover_flow() -> None:
         assert audio.status_code == 200
         assert audio.content
 
+        # 5. Re-mix at a louder vocal volume without re-running the pipeline.
+        remixed = client.post(
+            f"/api/v1/covers/{cover_id}/remix", json={"vocal_gain": 2.0}
+        )
+        assert remixed.status_code == 200
+        assert remixed.json()["vocal_gain"] == 2.0
+        assert remixed.json()["status"] == "completed"
+
+        # 6. Delete the cover.
+        assert client.delete(f"/api/v1/covers/{cover_id}").status_code == 204
+        assert client.get(f"/api/v1/covers/{cover_id}").status_code == 404
+
 
 def test_rejects_cover_for_untrained_voice() -> None:
     with TestClient(app) as client:
@@ -75,6 +87,25 @@ def test_rejects_cover_for_untrained_voice() -> None:
             files={"song": ("song.mp3", b"bytes", "audio/mpeg")},
         )
         assert response.status_code == 409
+
+
+def test_cancel_rejects_finished_training() -> None:
+    with TestClient(app) as client:
+        voice_id = client.post(
+            "/api/v1/voices", json={"name": "Cancel Target", "description": ""}
+        ).json()["id"]
+        client.post(
+            f"/api/v1/voices/{voice_id}/dataset",
+            files=[("files", ("s.wav", b"bytes", "audio/wav"))],
+        )
+        job_id = client.post(
+            "/api/v1/trainings", json={"voice_id": voice_id, "epochs": 5}
+        ).json()["id"]
+        _poll_until_terminal(
+            lambda: dict(client.get(f"/api/v1/trainings/{job_id}").json())
+        )
+        # A finished job can no longer be cancelled.
+        assert client.post(f"/api/v1/trainings/{job_id}/cancel").status_code == 409
 
 
 def test_rejects_non_audio_dataset_upload() -> None:

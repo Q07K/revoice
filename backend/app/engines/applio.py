@@ -17,6 +17,8 @@ import shutil
 from pathlib import Path
 
 from app.engines.base import (
+    CancelCheck,
+    CommandCancelled,
     ConversionSpec,
     EngineError,
     ProgressCallback,
@@ -28,6 +30,11 @@ from app.engines.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_if_cancelled(should_cancel: CancelCheck) -> None:
+    if should_cancel():
+        raise CommandCancelled()
 
 _EPOCH_LINE = re.compile(r"epoch=(\d+)")
 _TQDM_COUNTER = re.compile(r"(\d+)/(\d+) \[")
@@ -96,13 +103,17 @@ class ApplioTrainer(_ApplioCli):
         super().__init__(applio_dir, python_bin)
         self._batch_size = batch_size
 
-    def train(self, spec: TrainingSpec, on_progress: ProgressCallback) -> Path:
+    def train(
+        self, spec: TrainingSpec, on_progress: ProgressCallback, should_cancel: CancelCheck
+    ) -> Path:
         self._ensure_assets_config()
+        _raise_if_cancelled(should_cancel)
         self._preprocess(spec)
         on_progress(0.05)
+        _raise_if_cancelled(should_cancel)
         self._extract(spec)
         on_progress(_TRAIN_PROGRESS_START)
-        self._train(spec, on_progress)
+        self._train(spec, on_progress, should_cancel)
         self._build_index(spec.model_name)
         on_progress(0.98)
         return self._collect_artifacts(spec)
@@ -142,7 +153,9 @@ class ApplioTrainer(_ApplioCli):
         )
         _require_files(self._logs_dir(spec.model_name) / "extracted", "*.npy", "Feature extraction")
 
-    def _train(self, spec: TrainingSpec, on_progress: ProgressCallback) -> None:
+    def _train(
+        self, spec: TrainingSpec, on_progress: ProgressCallback, should_cancel: CancelCheck
+    ) -> None:
         command = self._core_command(
             [
                 "train",
@@ -158,7 +171,9 @@ class ApplioTrainer(_ApplioCli):
         )
 
         tracker = _EpochTracker(spec.epochs, on_progress)
-        tail = run_command_streaming(command, self._applio_dir, tracker.observe)
+        tail = run_command_streaming(
+            command, self._applio_dir, tracker.observe, should_cancel
+        )
         weight_pattern = f"{spec.model_name}_*e_*s.pth"
         if next(iter(self._logs_dir(spec.model_name).glob(weight_pattern)), None) is None:
             raise EngineError(f"Training produced no model weight. Last output:\n{tail[-1500:]}")
@@ -250,14 +265,29 @@ class CliVocalSeparator:
 
 
 class FfmpegMixer:
-    def mix(self, vocals: Path, instrumental: Path, output_path: Path) -> Path:
+    def mix(
+        self,
+        vocals: Path,
+        instrumental: Path,
+        output_path: Path,
+        vocal_gain: float,
+        instrumental_gain: float,
+    ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Apply per-track gain before summing, then a limiter so boosting the
+        # vocal above the backing track doesn't clip the mix.
+        filter_complex = (
+            f"[0:a]volume={vocal_gain:.3f}[v];"
+            f"[1:a]volume={instrumental_gain:.3f}[i];"
+            "[v][i]amix=inputs=2:duration=longest:normalize=0,"
+            "alimiter=limit=0.97"
+        )
         run_command(
             [
                 "ffmpeg", "-y",
                 "-i", str(vocals),
                 "-i", str(instrumental),
-                "-filter_complex", "amix=inputs=2:duration=longest:normalize=0",
+                "-filter_complex", filter_complex,
                 str(output_path),
             ]
         )

@@ -2,6 +2,7 @@ import codecs
 import os
 import re
 import subprocess
+import time
 from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -13,8 +14,35 @@ class EngineError(RuntimeError):
     """Raised when an underlying audio engine (training, separation, ...) fails."""
 
 
+class CommandCancelled(Exception):
+    """Raised when a streaming command is stopped via its should_cancel callback."""
+
+
 class ProgressCallback(Protocol):
     def __call__(self, progress: float) -> None: ...
+
+
+class CancelCheck(Protocol):
+    def __call__(self) -> bool: ...
+
+
+def _kill_process_tree(process: "subprocess.Popen[bytes]") -> None:
+    """Terminate a process and all of its descendants.
+
+    Applio's trainer spawns its own worker processes, so killing only the
+    top-level process would orphan them. On Windows `taskkill /T` walks the
+    whole tree; elsewhere fall back to terminate().
+    """
+    if process.poll() is not None:
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        process.terminate()
 
 
 @dataclass(frozen=True)
@@ -41,7 +69,9 @@ class SeparationResult:
 
 
 class VoiceTrainer(Protocol):
-    def train(self, spec: TrainingSpec, on_progress: ProgressCallback) -> Path: ...
+    def train(
+        self, spec: TrainingSpec, on_progress: ProgressCallback, should_cancel: CancelCheck
+    ) -> Path: ...
 
 
 class VoiceConverter(Protocol):
@@ -55,7 +85,14 @@ class VocalSeparator(Protocol):
 
 
 class AudioMixer(Protocol):
-    def mix(self, vocals: Path, instrumental: Path, output_path: Path) -> Path: ...
+    def mix(
+        self,
+        vocals: Path,
+        instrumental: Path,
+        output_path: Path,
+        vocal_gain: float,
+        instrumental_gain: float,
+    ) -> Path: ...
 
 
 def subprocess_env() -> dict[str, str]:
@@ -84,7 +121,10 @@ _LINE_BREAKS = re.compile(r"[\r\n]")
 
 
 def run_command_streaming(
-    args: Sequence[str], cwd: Path | None, on_line: Callable[[str], None]
+    args: Sequence[str],
+    cwd: Path | None,
+    on_line: Callable[[str], None],
+    should_cancel: CancelCheck | None = None,
 ) -> str:
     """Run a long-lived tool, forwarding each output line as it appears.
 
@@ -92,6 +132,9 @@ def run_command_streaming(
     Returns the tail of the combined output for diagnostics. Exit codes are not
     checked here: some tools (Applio's trainer) exit non-zero by design, so
     callers must verify expected output files instead.
+
+    If should_cancel() turns true between output chunks, the process tree is
+    killed and CommandCancelled is raised.
     """
     process = subprocess.Popen(
         list(args),
@@ -114,6 +157,9 @@ def run_command_streaming(
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         buffer = ""
         while True:
+            if should_cancel is not None and should_cancel():
+                _kill_process_tree(process)
+                raise CommandCancelled()
             chunk = stream.read1(4096)
             if not chunk:
                 break
@@ -143,14 +189,23 @@ def audio_duration_seconds(path: Path) -> float | None:
         return None
 
 
-def throttled(callback: ProgressCallback, min_delta: float = 0.005) -> ProgressCallback:
-    """Skip progress writes smaller than min_delta to avoid hammering the DB."""
-    last = -1.0
+def throttled(callback: ProgressCallback, min_interval: float = 0.6) -> ProgressCallback:
+    """Rate-limit progress writes by time, not by value delta.
+
+    A value-delta throttle collapses per-batch progress into epoch-sized steps
+    when the epoch count is low (e.g. 20 epochs -> ~5% jumps). Sampling by time
+    keeps the bar smooth regardless of how many epochs were requested, while
+    still bounding DB writes. The terminal 1.0 always gets through.
+    """
+    last_time = float("-inf")
+    last_value = -1.0
 
     def wrapper(progress: float) -> None:
-        nonlocal last
-        if progress - last >= min_delta or progress >= 1.0:
-            last = progress
+        nonlocal last_time, last_value
+        now = time.monotonic()
+        if progress >= 1.0 or (progress > last_value and now - last_time >= min_interval):
+            last_time = now
+            last_value = progress
             callback(progress)
 
     return wrapper

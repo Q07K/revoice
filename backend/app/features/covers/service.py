@@ -27,6 +27,15 @@ from app.storage.files import FileStorage, get_file_storage
 
 logger = logging.getLogger(__name__)
 
+_IN_PROGRESS_STATUSES = frozenset(
+    {
+        CoverStatus.PENDING,
+        CoverStatus.SEPARATING,
+        CoverStatus.CONVERTING,
+        CoverStatus.MIXING,
+    }
+)
+
 
 class CoverService:
     def __init__(self, db: Session, storage: FileStorage, runner: JobRunner) -> None:
@@ -34,7 +43,9 @@ class CoverService:
         self._storage = storage
         self._runner = runner
 
-    def create(self, voice_id: int, transpose: int, song: UploadFile) -> CoverJob:
+    def create(
+        self, voice_id: int, transpose: int, vocal_gain: float, song: UploadFile
+    ) -> CoverJob:
         voice = voices_crud.get_voice(self._db, voice_id)
         if voice is None:
             raise NotFoundError(f"Voice {voice_id} not found.")
@@ -42,15 +53,45 @@ class CoverService:
             raise ConflictError("The voice must finish training before generating covers.")
         title = validate_audio_filename(song.filename)
         song_path = self._storage.save_upload(song, self._storage.songs_dir())
-        cover = crud.create_cover(self._db, voice_id, title, str(song_path), transpose)
+        cover = crud.create_cover(
+            self._db, voice_id, title, str(song_path), transpose, vocal_gain
+        )
         self._runner.submit(partial(execute_cover, cover.id))
         return cover
+
+    def remix(self, cover_id: int, vocal_gain: float) -> CoverJob:
+        """Re-mix an existing cover at a new vocal volume without re-running the
+        slow separation/conversion stages (their outputs are cached per cover)."""
+        cover = self.get(cover_id)
+        if cover.status is not CoverStatus.COMPLETED:
+            raise ConflictError("완성된 커버만 볼륨을 다시 조정할 수 있어요.")
+        work_dir = self._storage.cover_dir(cover_id)
+        vocals = work_dir / "converted_vocals.wav"
+        instrumental = _find_instrumental(work_dir)
+        if not vocals.exists() or instrumental is None:
+            raise ConflictError(
+                "재믹싱에 필요한 중간 파일이 없어요. 새 커버로 다시 만들어주세요."
+            )
+        result = get_engine_set().mixer.mix(
+            vocals, instrumental, work_dir / "cover.wav", vocal_gain, 1.0
+        )
+        crud.set_vocal_gain(self._db, cover_id, vocal_gain)
+        crud.set_completed(self._db, cover_id, str(result))
+        _invalidate_waveform_cache(work_dir)
+        return self.get(cover_id)
 
     def get(self, cover_id: int) -> CoverJob:
         cover = crud.get_cover(self._db, cover_id)
         if cover is None:
             raise NotFoundError(f"Cover {cover_id} not found.")
         return cover
+
+    def delete(self, cover_id: int) -> None:
+        cover = self.get(cover_id)
+        if cover.status in _IN_PROGRESS_STATUSES:
+            raise ConflictError("진행 중인 커버는 삭제할 수 없어요. 완료되면 삭제해주세요.")
+        self._storage.remove_cover_data(cover_id, Path(cover.song_path))
+        crud.delete_cover(self._db, cover)
 
     def list_all(self, voice_id: int | None = None) -> Sequence[CoverJob]:
         return crud.list_covers(self._db, voice_id)
@@ -103,9 +144,10 @@ def execute_cover(cover_id: int) -> None:
             return
         song_path = Path(cover.song_path)
         transpose = cover.transpose
+        vocal_gain = cover.vocal_gain
         model_path = Path(voice.model_path)
     try:
-        result = _render_cover(cover_id, song_path, model_path, transpose)
+        result = _render_cover(cover_id, song_path, model_path, transpose, vocal_gain)
     except Exception as exc:
         logger.exception("Cover job %s failed.", cover_id)
         with SessionLocal() as db:
@@ -178,7 +220,9 @@ class _StageTicker:
             _set_stage(self._cover_id, self._plan.status, low + (high - low) * fraction, eta)
 
 
-def _render_cover(cover_id: int, song_path: Path, model_path: Path, transpose: int) -> Path:
+def _render_cover(
+    cover_id: int, song_path: Path, model_path: Path, transpose: int, vocal_gain: float
+) -> Path:
     engines = get_engine_set()
     work_dir = get_file_storage().cover_dir(cover_id)
     separation_estimate, conversion_estimate = _stage_estimates(song_path)
@@ -208,7 +252,9 @@ def _render_cover(cover_id: int, song_path: Path, model_path: Path, transpose: i
         converted = engines.converter.convert(spec)
 
     _set_stage(cover_id, CoverStatus.MIXING, _MIXING_AT, None)
-    return engines.mixer.mix(converted, separated.instrumental, work_dir / "cover.wav")
+    return engines.mixer.mix(
+        converted, separated.instrumental, work_dir / "cover.wav", vocal_gain, 1.0
+    )
 
 
 def _stage_estimates(song_path: Path) -> tuple[float | None, float | None]:
@@ -224,6 +270,19 @@ def _stage_estimates(song_path: Path) -> tuple[float | None, float | None]:
 
 def _ignore_progress(progress: float) -> None:
     """Separator progress is time-estimated by _StageTicker instead."""
+
+
+def _find_instrumental(work_dir: Path) -> Path | None:
+    # Matches both the real separator output ("..._(Instrumental)_...") and the
+    # mock engine's "instrumental.wav".
+    for candidate in work_dir.glob("*.wav"):
+        if "instrumental" in candidate.name.lower():
+            return candidate
+    return None
+
+
+def _invalidate_waveform_cache(work_dir: Path) -> None:
+    (work_dir / "waveform.json").unlink(missing_ok=True)
 
 
 def _set_stage(
