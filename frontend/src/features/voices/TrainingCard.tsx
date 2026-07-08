@@ -19,7 +19,8 @@ import { Progress } from '@/components/ui/progress'
 import { useStartTraining, useVoiceTrainings } from '@/features/voices/queries'
 import { formatDuration } from '@/lib/format'
 
-const DEFAULT_EPOCHS = 200
+const DEFAULT_EPOCHS = 100
+const MAX_EPOCHS = 500
 
 function LatestJob({ job }: { job: TrainingJob }) {
   return (
@@ -74,8 +75,8 @@ export function TrainingCard({ voice }: { voice: VoiceDetail }) {
       <CardHeader>
         <CardTitle>학습</CardTitle>
         <CardDescription>
-          데이터셋으로 RVC 보이스 모델을 학습합니다. epoch가 클수록 오래 걸리지만 더
-          정교해져요.
+          데이터셋으로 RVC v2 보이스 모델을 학습합니다. RVC v2는 과적합이 빨라요 —
+          권장 50~200, 데이터가 많을수록 낮게 잡는 게 좋습니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -95,7 +96,7 @@ export function TrainingCard({ voice }: { voice: VoiceDetail }) {
               id="epochs"
               type="number"
               min={1}
-              max={2000}
+              max={MAX_EPOCHS}
               value={epochs}
               onChange={(event) => setEpochs(Number(event.target.value))}
               className="w-28"
