@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { cancelTraining, fetchTrainings, startTraining } from '@/api/trainings'
 import type { TrainingCreateInput } from '@/api/trainings'
 import type { TrainingJob, VoiceDetail } from '@/api/types'
-import { createVoice, deleteVoice, fetchVoice, fetchVoices, uploadDatasetFiles } from '@/api/voices'
+import {
+  createVoice,
+  deleteVoice,
+  fetchVoice,
+  fetchVoices,
+  updateVoice,
+  uploadDatasetFiles,
+} from '@/api/voices'
 import type { VoiceCreateInput } from '@/api/voices'
 
 export const voiceKeys = {
@@ -45,6 +52,17 @@ export function useCreateVoice() {
   return useMutation({
     mutationFn: (input: VoiceCreateInput) => createVoice(input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: voiceKeys.all }),
+  })
+}
+
+export function useUpdateVoice(voiceId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: VoiceCreateInput) => updateVoice(voiceId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: voiceKeys.all })
+      void queryClient.invalidateQueries({ queryKey: voiceKeys.detail(voiceId) })
+    },
   })
 }
 

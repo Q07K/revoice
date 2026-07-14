@@ -5,6 +5,7 @@ import { StatusBadge, voiceStatusMeta } from '@/components/shared/StatusBadge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DatasetCard } from '@/features/voices/DatasetCard'
 import { DeleteVoiceDialog } from '@/features/voices/DeleteVoiceDialog'
+import { EditVoiceDialog } from '@/features/voices/EditVoiceDialog'
 import { TrainingCard } from '@/features/voices/TrainingCard'
 import { useVoice } from '@/features/voices/queries'
 
@@ -17,8 +18,8 @@ export function VoiceDetailPage() {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-10 w-64 rounded-xl" />
-        <Skeleton className="h-52 rounded-2xl" />
-        <Skeleton className="h-52 rounded-2xl" />
+        <Skeleton className="h-52 rounded-lg" />
+        <Skeleton className="h-52 rounded-lg" />
       </div>
     )
   }
@@ -36,23 +37,27 @@ export function VoiceDetailPage() {
 
   return (
     <>
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-4 border-b border-border/70 pb-5">
+        <div className="flex flex-col gap-1.5">
           <Link
             to="/voices"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            <ChevronLeft className="size-4" /> 보이스 모델
+            <ChevronLeft className="size-3.5" /> 보이스 모델
           </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">{voice.data.name}</h1>
+          <div className="flex items-center gap-2.5">
+            <span className="h-5 w-1 rounded-full bg-primary" aria-hidden />
+            <h1 className="text-[22px] font-bold tracking-tight">{voice.data.name}</h1>
             <StatusBadge meta={voiceStatusMeta(voice.data.status)} />
           </div>
           {voice.data.description.length > 0 && (
-            <p className="mt-1 text-sm text-muted-foreground">{voice.data.description}</p>
+            <p className="text-sm text-muted-foreground">{voice.data.description}</p>
           )}
         </div>
-        <DeleteVoiceDialog voice={voice.data} />
+        <div className="flex items-center gap-1">
+          <EditVoiceDialog voice={voice.data} />
+          <DeleteVoiceDialog voice={voice.data} />
+        </div>
       </div>
       <DatasetCard voice={voice.data} />
       <TrainingCard voice={voice.data} />

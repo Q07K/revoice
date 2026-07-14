@@ -1,4 +1,4 @@
-import { deleteRequest, getJson, postForm, postJson } from '@/api/client'
+import { deleteRequest, getJson, patchJson, postForm, postJson } from '@/api/client'
 import type { DatasetFile, Voice, VoiceDetail } from '@/api/types'
 
 export interface VoiceCreateInput {
@@ -16,6 +16,10 @@ export function fetchVoice(voiceId: number): Promise<VoiceDetail> {
 
 export function createVoice(input: VoiceCreateInput): Promise<Voice> {
   return postJson<Voice>('/voices', input)
+}
+
+export function updateVoice(voiceId: number, input: VoiceCreateInput): Promise<Voice> {
+  return patchJson<Voice>(`/voices/${voiceId}`, input)
 }
 
 export function deleteVoice(voiceId: number): Promise<void> {

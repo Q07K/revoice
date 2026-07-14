@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  batchDeleteCovers,
   createCover,
   deleteCover,
   fetchCoverWaveform,
@@ -75,6 +76,14 @@ export function useDeleteCover() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (coverId: number) => deleteCover(coverId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: coverKeys.all }),
+  })
+}
+
+export function useBatchDeleteCovers() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: number[]) => batchDeleteCovers(ids),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: coverKeys.all }),
   })
 }
