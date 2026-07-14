@@ -24,6 +24,9 @@ class Voice(Base):
         Enum(VoiceStatus, native_enum=False, length=20), default=VoiceStatus.DRAFT
     )
     model_path: Mapped[str | None] = mapped_column(String(500), default=None)
+    # 데이터셋에서 측정한 목소리 음역(유성음 f0 중앙값, Hz). 커버 자동 키 매칭에
+    # 사용하며, 첫 자동 키 커버 때 계산해 캐시한다.
+    median_f0_hz: Mapped[float | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     dataset_files: Mapped[list["DatasetFile"]] = relationship(

@@ -8,7 +8,8 @@ type Theme = 'light' | 'dark'
 function initialTheme(): Theme {
   const stored = localStorage.getItem('revoice-theme')
   if (stored === 'light' || stored === 'dark') return stored
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  // Studio defaults to dark — the console/editor look is the primary experience.
+  return 'dark'
 }
 
 export function ThemeToggle() {

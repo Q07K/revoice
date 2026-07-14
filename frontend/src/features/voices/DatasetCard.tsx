@@ -35,7 +35,8 @@ export function DatasetCard({ voice }: { voice: VoiceDetail }) {
           <div>
             <CardTitle>학습 데이터셋</CardTitle>
             <CardDescription>
-              배경음 없는 깨끗한 단독 음성일수록 품질이 좋아져요. 30분 이상을 권장합니다.
+              반주나 배경음은 학습 전에 자동으로 정리돼요. 한 사람 목소리만 담긴 파일로
+              30분 이상을 권장합니다.
             </CardDescription>
           </div>
           <Button

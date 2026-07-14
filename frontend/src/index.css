@@ -2,99 +2,100 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Warm Studio theme — 따뜻한 그레이지 바탕 + 깊은 페트롤 포인트 */
+/* Studio Console theme — 쿨한 근흑 콘솔 바탕 + 틸 포인트 (에디터 톤 전면 적용) */
 :root {
-  --background: #efede8;
-  --foreground: #2b2a26;
-  --card: #fdfcf9;
-  --card-foreground: #2b2a26;
-  --popover: #fdfcf9;
-  --popover-foreground: #2b2a26;
+  --background: #eceef1;
+  --foreground: #1b1e22;
+  --card: #f8f9fb;
+  --card-foreground: #1b1e22;
+  --popover: #f8f9fb;
+  --popover-foreground: #1b1e22;
   --primary: #16626b;
   --primary-foreground: #f3fbfb;
-  --secondary: #e7e4dd;
-  --secondary-foreground: #2b2a26;
-  --muted: #ecebe4;
-  --muted-foreground: #8b887c;
-  --accent: #d9ecee;
-  --accent-foreground: #114d54;
+  --secondary: #e2e5ea;
+  --secondary-foreground: #1b1e22;
+  --muted: #e6e9ee;
+  --muted-foreground: #616770;
+  --accent: #d6ebee;
+  --accent-foreground: #0f4a51;
   --destructive: #b3452f;
   --destructive-foreground: #fdf3f0;
-  --border: #e2dfd6;
-  --input: #e2dfd6;
+  --border: #d8dce2;
+  --input: #d8dce2;
   --ring: #16626b;
-  --radius: 0.875rem;
+  --radius: 0.75rem;
 
-  --sidebar: #e7e4dd;
-  --sidebar-foreground: #2b2a26;
+  --sidebar: #e4e7ec;
+  --sidebar-foreground: #1b1e22;
   --sidebar-primary: #16626b;
   --sidebar-primary-foreground: #f3fbfb;
-  --sidebar-accent: #fdfcf9;
-  --sidebar-accent-foreground: #2b2a26;
-  --sidebar-border: #dbd7cc;
+  --sidebar-accent: #f8f9fb;
+  --sidebar-accent-foreground: #1b1e22;
+  --sidebar-border: #d3d7dd;
   --sidebar-ring: #16626b;
 
   --status-ready: #1c6b4a;
-  --status-ready-bg: #dcefe7;
+  --status-ready-bg: #d8efe5;
   --status-running: #16626b;
-  --status-running-bg: #d9ecee;
-  --status-draft: #79766a;
-  --status-draft-bg: #ecebe4;
+  --status-running-bg: #d6ebee;
+  --status-draft: #616770;
+  --status-draft-bg: #e6e9ee;
   --status-failed: #b3452f;
   --status-failed-bg: #f6e3de;
   --chart-1: #16626b;
   --chart-2: #1c6b4a;
-  --chart-3: #b3452f;
-  --chart-4: #8b887c;
-  --chart-5: #2b2a26;
+  --chart-3: #c07a2c;
+  --chart-4: #616770;
+  --chart-5: #1b1e22;
 }
 
 .dark {
-  --background: #1f1e1b;
-  --foreground: #ece9e2;
-  --card: #282723;
-  --card-foreground: #ece9e2;
-  --popover: #282723;
-  --popover-foreground: #ece9e2;
+  --background: #131519;
+  --foreground: #e7e9ec;
+  --card: #1a1d22;
+  --card-foreground: #e7e9ec;
+  --popover: #1a1d22;
+  --popover-foreground: #e7e9ec;
   --primary: #57aab2;
-  --primary-foreground: #0c2f33;
-  --secondary: #34322d;
-  --secondary-foreground: #ece9e2;
-  --muted: #2f2d29;
-  --muted-foreground: #a5a196;
-  --accent: #1d3a3e;
+  --primary-foreground: #08222a;
+  --secondary: #20242a;
+  --secondary-foreground: #e7e9ec;
+  --muted: #20242a;
+  --muted-foreground: #8b9198;
+  --accent: #16323a;
   --accent-foreground: #9fd3d9;
   --destructive: #d4735e;
-  --destructive-foreground: #2b120b;
-  --border: #383630;
-  --input: #383630;
+  --destructive-foreground: #1a0f0a;
+  --border: #2a2e35;
+  --input: #2a2e35;
   --ring: #57aab2;
 
-  --sidebar: #262521;
-  --sidebar-foreground: #ece9e2;
+  --sidebar: #0f1115;
+  --sidebar-foreground: #e7e9ec;
   --sidebar-primary: #57aab2;
-  --sidebar-primary-foreground: #0c2f33;
-  --sidebar-accent: #34322d;
-  --sidebar-accent-foreground: #ece9e2;
-  --sidebar-border: #383630;
+  --sidebar-primary-foreground: #08222a;
+  --sidebar-accent: #1e242b;
+  --sidebar-accent-foreground: #e7e9ec;
+  --sidebar-border: #22262d;
   --sidebar-ring: #57aab2;
 
-  --status-ready: #7dc9a4;
-  --status-ready-bg: #1d3a2c;
-  --status-running: #9fd3d9;
-  --status-running-bg: #1d3a3e;
-  --status-draft: #a5a196;
-  --status-draft-bg: #2f2d29;
+  --status-ready: #6fce9f;
+  --status-ready-bg: #123227;
+  --status-running: #7fd0d8;
+  --status-running-bg: #16323a;
+  --status-draft: #8b9198;
+  --status-draft-bg: #20242a;
   --status-failed: #e39a89;
-  --status-failed-bg: #3d211a;
+  --status-failed-bg: #3a201b;
   --chart-1: #57aab2;
-  --chart-2: #7dc9a4;
-  --chart-3: #e39a89;
-  --chart-4: #a5a196;
-  --chart-5: #ece9e2;
+  --chart-2: #6fce9f;
+  --chart-3: #e0a34a;
+  --chart-4: #8b9198;
+  --chart-5: #e7e9ec;
 }
 
 @theme inline {

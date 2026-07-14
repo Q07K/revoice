@@ -4,7 +4,11 @@ import type { CoverJob } from '@/api/types'
 export interface CoverCreateInput {
   voiceId: number
   transpose: number
+  autoTranspose: boolean
   vocalGain: number
+  indexRate: number
+  protect: number
+  volumeEnvelope: number
   song: File
 }
 
@@ -21,7 +25,11 @@ export function createCover(input: CoverCreateInput): Promise<CoverJob> {
   const form = new FormData()
   form.append('voice_id', String(input.voiceId))
   form.append('transpose', String(input.transpose))
+  form.append('auto_transpose', String(input.autoTranspose))
   form.append('vocal_gain', String(input.vocalGain))
+  form.append('index_rate', String(input.indexRate))
+  form.append('protect', String(input.protect))
+  form.append('volume_envelope', String(input.volumeEnvelope))
   form.append('song', input.song)
   return postForm<CoverJob>('/covers', form)
 }
@@ -34,6 +42,15 @@ export function deleteCover(coverId: number): Promise<void> {
   return deleteRequest(`/covers/${coverId}`)
 }
 
+export interface BatchDeleteResult {
+  deleted: number
+  skipped: number
+}
+
+export function batchDeleteCovers(ids: number[]): Promise<BatchDeleteResult> {
+  return postJson<BatchDeleteResult>('/covers/batch-delete', { ids })
+}
+
 export function remixCover(coverId: number, vocalGain: number): Promise<CoverJob> {
   return postJson<CoverJob>(`/covers/${coverId}/remix`, { vocal_gain: vocalGain })
 }
@@ -44,6 +61,15 @@ export interface CoverWaveform {
 
 export function fetchCoverWaveform(coverId: number): Promise<CoverWaveform> {
   return getJson<CoverWaveform>(`/covers/${coverId}/waveform`)
+}
+
+export function coverStemUrl(coverId: number, kind: 'vocal' | 'instrumental'): string {
+  return apiUrl(`/covers/${coverId}/stems/${kind}/audio`)
+}
+
+export function coverExportMp3Url(coverId: number, version?: string | null): string {
+  const suffix = version ? `?v=${encodeURIComponent(version)}` : ''
+  return apiUrl(`/covers/${coverId}/export.mp3${suffix}`)
 }
 
 export function coverAudioUrl(coverId: number, version?: string | null): string {

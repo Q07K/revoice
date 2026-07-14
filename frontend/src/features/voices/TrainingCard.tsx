@@ -15,13 +15,12 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
+import { TrainingProgress } from '@/features/voices/TrainingProgress'
 import {
   useCancelTraining,
   useStartTraining,
   useVoiceTrainings,
 } from '@/features/voices/queries'
-import { formatDuration } from '@/lib/format'
 
 const DEFAULT_EPOCHS = 100
 const MAX_EPOCHS = 500
@@ -55,17 +54,11 @@ function LatestJob({ job, onCancel, canceling }: LatestJobProps) {
         </div>
       </div>
       {active && (
-        <>
-          <Progress value={job.progress * 100} />
-          <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
-            <span>{Math.round(job.progress * 100)}%</span>
-            <span>
-              {job.eta_seconds !== null
-                ? `약 ${formatDuration(job.eta_seconds)} 남음`
-                : '남은 시간 계산 중…'}
-            </span>
-          </div>
-        </>
+        <TrainingProgress
+          progress={job.progress}
+          etaSeconds={job.eta_seconds}
+          status={job.status}
+        />
       )}
       {job.status === 'failed' && job.error !== null && (
         <p className="text-sm text-status-failed">{job.error}</p>

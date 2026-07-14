@@ -18,6 +18,14 @@ def get_voice(db: Session, voice_id: int) -> Voice | None:
     return db.get(Voice, voice_id)
 
 
+def update_voice(db: Session, voice: Voice, name: str, description: str) -> Voice:
+    voice.name = name
+    voice.description = description
+    db.commit()
+    db.refresh(voice)
+    return voice
+
+
 def get_voice_by_name(db: Session, name: str) -> Voice | None:
     return db.scalar(select(Voice).where(Voice.name == name))
 
@@ -55,4 +63,20 @@ def set_voice_status(
     voice.status = status
     if model_path is not None:
         voice.model_path = model_path
+    db.commit()
+
+
+def set_median_f0(db: Session, voice_id: int, median_f0_hz: float) -> None:
+    voice = db.get(Voice, voice_id)
+    if voice is None:
+        return
+    voice.median_f0_hz = median_f0_hz
+    db.commit()
+
+
+def reset_median_f0(db: Session, voice_id: int) -> None:
+    voice = db.get(Voice, voice_id)
+    if voice is None:
+        return
+    voice.median_f0_hz = None
     db.commit()

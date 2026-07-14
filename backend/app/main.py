@@ -8,14 +8,14 @@ from app.api import api_router
 from app.core.config import get_settings
 from app.core.database import Base, engine, ensure_schema
 from app.core.exceptions import register_exception_handlers
-from app.jobs.recovery import fail_interrupted_jobs
+from app.jobs.recovery import resume_interrupted_jobs
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     Base.metadata.create_all(bind=engine)
     ensure_schema(engine)
-    fail_interrupted_jobs()
+    resume_interrupted_jobs()
     get_settings().storage_dir.mkdir(parents=True, exist_ok=True)
     yield
 

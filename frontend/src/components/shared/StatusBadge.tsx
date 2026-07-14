@@ -1,4 +1,9 @@
-import type { CoverStatus, TrainingStatus, VoiceStatus } from '@/api/types'
+import type {
+  CoverStatus,
+  SeparationStatus,
+  TrainingStatus,
+  VoiceStatus,
+} from '@/api/types'
 import { cn } from '@/lib/utils'
 
 export type StatusKind = 'ready' | 'running' | 'draft' | 'failed'
@@ -48,6 +53,16 @@ export function coverStatusMeta(status: CoverStatus): StatusMeta {
   return meta[status]
 }
 
+export function separationStatusMeta(status: SeparationStatus): StatusMeta {
+  const meta: Record<SeparationStatus, StatusMeta> = {
+    pending: { label: '대기 중', kind: 'draft' },
+    separating: { label: '분리 중', kind: 'running' },
+    completed: { label: '완료', kind: 'ready' },
+    failed: { label: '실패', kind: 'failed' },
+  }
+  return meta[status]
+}
+
 interface StatusBadgeProps {
   meta: StatusMeta
   className?: string
@@ -57,7 +72,7 @@ export function StatusBadge({ meta, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
+        'inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold',
         KIND_CLASSES[meta.kind],
         className,
       )}

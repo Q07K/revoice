@@ -28,6 +28,12 @@ class FileStorage:
     def cover_dir(self, cover_id: int) -> Path:
         return self._ensure(self._root / "covers" / str(cover_id))
 
+    def separation_dir(self, job_id: int) -> Path:
+        return self._ensure(self._root / "separations" / str(job_id))
+
+    def video_dir(self, job_id: int) -> Path:
+        return self._ensure(self._root / "videos" / str(job_id))
+
     def save_upload(self, upload: UploadFile, target_dir: Path) -> Path:
         suffix = Path(upload.filename or "").suffix.lower()
         destination = target_dir / f"{uuid4().hex}{suffix}"
@@ -43,6 +49,12 @@ class FileStorage:
         shutil.rmtree(self._root / "covers" / str(cover_id), ignore_errors=True)
         if song_path is not None:
             song_path.unlink(missing_ok=True)
+
+    def remove_separation_data(self, job_id: int) -> None:
+        shutil.rmtree(self._root / "separations" / str(job_id), ignore_errors=True)
+
+    def remove_video_data(self, job_id: int) -> None:
+        shutil.rmtree(self._root / "videos" / str(job_id), ignore_errors=True)
 
     @staticmethod
     def _ensure(path: Path) -> Path:

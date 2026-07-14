@@ -80,3 +80,16 @@ def set_cancelled(db: Session, job_id: int) -> None:
     job.eta_seconds = None
     job.finished_at = _utcnow()
     db.commit()
+
+
+def reset_for_requeue(db: Session, job_id: int) -> None:
+    job = db.get(TrainingJob, job_id)
+    if job is None:
+        return
+    job.status = TrainingStatus.PENDING
+    job.progress = 0.0
+    job.eta_seconds = None
+    job.error = None
+    job.started_at = None
+    job.finished_at = None
+    db.commit()

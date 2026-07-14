@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from app.features.voices import crud
 from app.features.voices.models import DatasetFile, Voice, VoiceStatus
-from app.features.voices.schemas import VoiceCreate
+from app.features.voices.schemas import VoiceCreate, VoiceUpdate
 from app.storage.files import FileStorage, get_file_storage
 
 ALLOWED_AUDIO_SUFFIXES = frozenset({".wav", ".mp3", ".flac", ".m4a", ".ogg"})
@@ -30,6 +30,13 @@ class VoiceService:
             raise NotFoundError(f"Voice {voice_id} not found.")
         return voice
 
+    def update(self, voice_id: int, data: VoiceUpdate) -> Voice:
+        voice = self.get(voice_id)
+        duplicate = crud.get_voice_by_name(self._db, data.name)
+        if duplicate is not None and duplicate.id != voice_id:
+            raise ConflictError(f"'{data.name}' 이름의 보이스가 이미 있어요.")
+        return crud.update_voice(self._db, voice, data.name, data.description)
+
     def list_all(self) -> Sequence[Voice]:
         return crud.list_voices(self._db)
 
@@ -48,7 +55,11 @@ class VoiceService:
             raise ConflictError("Cannot modify the dataset while the voice is training.")
         if not uploads:
             raise InvalidInputError("At least one audio file is required.")
-        return [self._store_dataset_file(voice_id, upload) for upload in uploads]
+        stored = [self._store_dataset_file(voice_id, upload) for upload in uploads]
+        # 데이터셋이 바뀌면 캐시된 음역(자동 키 매칭용)은 무효 — 다음 자동 키
+        # 커버에서 다시 측정한다.
+        crud.reset_median_f0(self._db, voice_id)
+        return stored
 
     def _store_dataset_file(self, voice_id: int, upload: UploadFile) -> DatasetFile:
         original_name = validate_audio_filename(upload.filename)

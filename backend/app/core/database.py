@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -16,7 +16,15 @@ def _build_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite"):
         # Background job threads share the SQLite file with request threads.
         connect_args["check_same_thread"] = False
-    return create_engine(database_url, connect_args=connect_args)
+    built = create_engine(database_url, connect_args=connect_args)
+    if database_url.startswith("sqlite"):
+        # SQLite ships with FK enforcement off; without this, deleting a voice
+        # leaves orphaned covers instead of cascading (ondelete="CASCADE").
+        @event.listens_for(built, "connect")
+        def _enable_foreign_keys(dbapi_connection, _record) -> None:  # type: ignore[no-untyped-def]
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+    return built
 
 
 engine: Engine = _build_engine(get_settings().database_url)
@@ -38,6 +46,12 @@ _SQLITE_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("training_jobs", "eta_seconds", "FLOAT"),
     ("cover_jobs", "eta_seconds", "FLOAT"),
     ("cover_jobs", "vocal_gain", "FLOAT DEFAULT 1.5"),
+    ("cover_jobs", "index_rate", "FLOAT DEFAULT 0.5"),
+    ("cover_jobs", "protect", "FLOAT DEFAULT 0.33"),
+    ("cover_jobs", "volume_envelope", "FLOAT DEFAULT 1.0"),
+    ("cover_jobs", "auto_transpose", "BOOLEAN DEFAULT 0"),
+    ("voices", "median_f0_hz", "FLOAT"),
+    ("separation_jobs", "dry_vocals_path", "VARCHAR(500)"),
 ]
 
 

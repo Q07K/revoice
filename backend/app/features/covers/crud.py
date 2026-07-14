@@ -17,19 +17,37 @@ def create_cover(
     title: str,
     song_path: str,
     transpose: int,
+    auto_transpose: bool,
     vocal_gain: float,
+    index_rate: float,
+    protect: float,
+    volume_envelope: float,
 ) -> CoverJob:
     cover = CoverJob(
         voice_id=voice_id,
         title=title,
         song_path=song_path,
         transpose=transpose,
+        auto_transpose=auto_transpose,
         vocal_gain=vocal_gain,
+        index_rate=index_rate,
+        protect=protect,
+        volume_envelope=volume_envelope,
     )
     db.add(cover)
     db.commit()
     db.refresh(cover)
     return cover
+
+
+def set_transpose(db: Session, cover_id: int, transpose: int) -> None:
+    """Record the key shift auto matching resolved, so the UI shows the
+    actually applied value."""
+    cover = db.get(CoverJob, cover_id)
+    if cover is None:
+        return
+    cover.transpose = transpose
+    db.commit()
 
 
 def set_vocal_gain(db: Session, cover_id: int, vocal_gain: float) -> None:

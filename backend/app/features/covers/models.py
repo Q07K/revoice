@@ -26,8 +26,15 @@ class CoverJob(Base):
     title: Mapped[str] = mapped_column(String(255))
     song_path: Mapped[str] = mapped_column(String(500))
     transpose: Mapped[int] = mapped_column(default=0)
+    # 키 자동 매칭 여부. True면 잡 실행 중 계산된 옥타브 시프트가 transpose에
+    # 기록된다 (완료 후 transpose = 실제 적용된 키).
+    auto_transpose: Mapped[bool] = mapped_column(default=False)
     # 반주 대비 변환 보컬의 볼륨 배수 (1.0 = 원본, >1 = 보컬 강조).
     vocal_gain: Mapped[float] = mapped_column(default=1.5)
+    # RVC 추론 품질 옵션 (커버 생성 시 고정, 표시/재현용으로 저장).
+    index_rate: Mapped[float] = mapped_column(default=0.5)
+    protect: Mapped[float] = mapped_column(default=0.33)
+    volume_envelope: Mapped[float] = mapped_column(default=1.0)
     status: Mapped[CoverStatus] = mapped_column(
         Enum(CoverStatus, native_enum=False, length=20), default=CoverStatus.PENDING
     )

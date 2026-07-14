@@ -14,16 +14,19 @@ import { formatDate } from '@/lib/format'
 function VoiceCard({ voice }: { voice: Voice }) {
   return (
     <Link to={`/voices/${voice.id}`} className="group">
-      <Card className="h-full transition-shadow group-hover:shadow-md">
-        <CardContent className="flex h-full flex-col gap-2">
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold">{voice.name}</p>
+      <Card className="h-full transition-all group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md">
+        <CardContent className="flex h-full flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-base font-bold text-accent-foreground">
+              {voice.name.slice(0, 1)}
+            </span>
+            <p className="min-w-0 flex-1 truncate font-semibold">{voice.name}</p>
             <StatusBadge meta={voiceStatusMeta(voice.status)} />
           </div>
           <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
             {voice.description.length > 0 ? voice.description : '설명 없음'}
           </p>
-          <p className="mt-auto text-xs text-muted-foreground">
+          <p className="mt-auto text-xs text-muted-foreground tabular-nums">
             {formatDate(voice.created_at)} 생성
           </p>
         </CardContent>
@@ -45,7 +48,7 @@ export function VoicesPage() {
       {voices.isPending ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((key) => (
-            <Skeleton key={key} className="h-36 rounded-2xl" />
+            <Skeleton key={key} className="h-36 rounded-lg" />
           ))}
         </div>
       ) : voices.data === undefined || voices.data.length === 0 ? (

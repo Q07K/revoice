@@ -3,7 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, UploadFile
 
 from app.features.voices.models import DatasetFile, Voice
-from app.features.voices.schemas import DatasetFileRead, VoiceCreate, VoiceDetail, VoiceRead
+from app.features.voices.schemas import (
+    DatasetFileRead,
+    VoiceCreate,
+    VoiceDetail,
+    VoiceRead,
+    VoiceUpdate,
+)
 from app.features.voices.service import VoiceService, get_voice_service
 
 router = APIRouter(prefix="/voices", tags=["voices"])
@@ -24,6 +30,11 @@ def list_voices(service: ServiceDep) -> list[Voice]:
 @router.get("/{voice_id}", response_model=VoiceDetail)
 def get_voice(voice_id: int, service: ServiceDep) -> Voice:
     return service.get(voice_id)
+
+
+@router.patch("/{voice_id}", response_model=VoiceRead)
+def update_voice(voice_id: int, data: VoiceUpdate, service: ServiceDep) -> Voice:
+    return service.update(voice_id, data)
 
 
 @router.delete("/{voice_id}", status_code=204)

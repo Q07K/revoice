@@ -52,10 +52,49 @@ export interface CoverJob {
   voice_id: number
   title: string
   transpose: number
+  auto_transpose: boolean
   vocal_gain: number
+  index_rate: number
+  protect: number
+  volume_envelope: number
   status: CoverStatus
   progress: number
   eta_seconds: number | null
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export type VideoStatus = 'pending' | 'rendering' | 'completed' | 'failed'
+export type VideoVisual = 'image' | 'wave' | 'spectrum'
+export type VideoAspect = '16:9' | '9:16'
+
+export interface VideoJob {
+  id: number
+  cover_id: number
+  title: string
+  subtitle: string
+  visual: VideoVisual
+  aspect: VideoAspect
+  status: VideoStatus
+  progress: number
+  eta_seconds: number | null
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export type SeparationStatus = 'pending' | 'separating' | 'completed' | 'failed'
+
+export interface SeparationJob {
+  id: number
+  title: string
+  status: SeparationStatus
+  progress: number
+  eta_seconds: number | null
+  has_vocals: boolean
+  has_instrumental: boolean
+  has_dry_vocals: boolean
   error: string | null
   created_at: string
   finished_at: string | null

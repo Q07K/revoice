@@ -2,6 +2,7 @@
 
 import shutil
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from app.engines.base import (
@@ -11,6 +12,7 @@ from app.engines.base import (
     ProgressCallback,
     SeparationResult,
     TrainingSpec,
+    VideoSpec,
 )
 
 
@@ -66,3 +68,43 @@ class MockMixer:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(vocals, output_path)
         return output_path
+
+    def merge(self, inputs: Sequence[Path], output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(inputs[0], output_path)
+        return output_path
+
+
+class MockKaraokeSplitter:
+    def split(self, vocals: Path, output_dir: Path) -> tuple[Path, Path]:
+        target_dir = output_dir / "karaoke"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        lead = target_dir / "lead.wav"
+        backing = target_dir / "backing.wav"
+        shutil.copyfile(vocals, lead)
+        shutil.copyfile(vocals, backing)
+        return lead, backing
+
+
+class MockDereverber:
+    def dereverb(self, vocals: Path, output_dir: Path) -> Path:
+        target_dir = output_dir / "dereverb"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        dry = target_dir / "dry_vocals.wav"
+        shutil.copyfile(vocals, dry)
+        return dry
+
+
+class MockPitchAnalyzer:
+    """Register measurement needs librosa (Applio venv); the mock reports
+    unknown so auto key matching resolves to no shift."""
+
+    def median_f0(self, audio_paths: Sequence[Path]) -> float | None:
+        return None
+
+
+class MockVideoRenderer:
+    def render(self, spec: VideoSpec) -> Path:
+        spec.output_path.parent.mkdir(parents=True, exist_ok=True)
+        spec.output_path.write_bytes(b"mock-mp4")
+        return spec.output_path

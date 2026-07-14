@@ -1,6 +1,7 @@
 import codecs
 import os
 import re
+import signal
 import subprocess
 import time
 from collections import deque
@@ -30,19 +31,34 @@ def _kill_process_tree(process: "subprocess.Popen[bytes]") -> None:
     """Terminate a process and all of its descendants.
 
     Applio's trainer spawns its own worker processes, so killing only the
-    top-level process would orphan them. On Windows `taskkill /T` walks the
-    whole tree; elsewhere fall back to terminate().
+    top-level process would orphan them (leaving GPU memory pinned). On Windows
+    `taskkill /T` walks the whole tree; on POSIX the child is launched in its own
+    session (see run_command_streaming), so signalling the process group reaches
+    every descendant.
     """
     if process.poll() is not None:
         return
-    try:
+    if os.name == "nt":
         subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(process.pid)],
             capture_output=True,
             check=False,
         )
-    except OSError:
-        process.terminate()
+        return
+    try:
+        pgid = os.getpgid(process.pid)
+    except ProcessLookupError:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
 
 
 @dataclass(frozen=True)
@@ -60,12 +76,27 @@ class ConversionSpec:
     model_path: Path
     output_path: Path
     transpose: int
+    # RVC 추론 품질 옵션 (Applio infer로 전달). 기본값은 무난한 출발점.
+    index_rate: float = 0.5
+    protect: float = 0.33
+    volume_envelope: float = 1.0
 
 
 @dataclass(frozen=True)
 class SeparationResult:
     vocals: Path
     instrumental: Path
+
+
+@dataclass(frozen=True)
+class VideoSpec:
+    audio_path: Path
+    output_path: Path
+    aspect: str  # "16:9" | "9:16"
+    visual: str  # "image" | "wave" | "spectrum"
+    image_path: Path | None
+    title: str
+    subtitle: str
 
 
 class VoiceTrainer(Protocol):
@@ -84,6 +115,24 @@ class VocalSeparator(Protocol):
     ) -> SeparationResult: ...
 
 
+class Dereverber(Protocol):
+    def dereverb(self, vocals: Path, output_dir: Path) -> Path:
+        """Strip reverb/echo from a vocal stem, returning the dry vocal file."""
+        ...
+
+
+class KaraokeSplitter(Protocol):
+    def split(self, vocals: Path, output_dir: Path) -> tuple[Path, Path]:
+        """Split a vocal stem into (lead vocal, backing vocals)."""
+        ...
+
+
+class PitchAnalyzer(Protocol):
+    def median_f0(self, audio_paths: Sequence[Path]) -> float | None:
+        """Median voiced f0 (Hz) across the given files; None when unmeasurable."""
+        ...
+
+
 class AudioMixer(Protocol):
     def mix(
         self,
@@ -93,6 +142,14 @@ class AudioMixer(Protocol):
         vocal_gain: float,
         instrumental_gain: float,
     ) -> Path: ...
+
+    def merge(self, inputs: Sequence[Path], output_path: Path) -> Path:
+        """Sum tracks at unity gain (e.g. instrumental + backing vocals)."""
+        ...
+
+
+class VideoRenderer(Protocol):
+    def render(self, spec: VideoSpec) -> Path: ...
 
 
 def subprocess_env() -> dict[str, str]:
@@ -142,6 +199,9 @@ def run_command_streaming(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=subprocess_env(),
+        # POSIX: run in a fresh session so the whole spawned tree (Applio's
+        # trainer forks workers) shares one process group we can signal on cancel.
+        start_new_session=os.name != "nt",
     )
     tail: deque[str] = deque(maxlen=60)
 
@@ -171,6 +231,23 @@ def run_command_streaming(
         emit(buffer)
     process.wait()
     return "\n".join(tail)
+
+
+_MEAN_VOLUME = re.compile(r"mean_volume:\s*(-?[\d.]+)\s*dB")
+
+
+def mean_volume_db(path: Path) -> float | None:
+    """Mean level via ffmpeg volumedetect; None when unmeasurable."""
+    result = subprocess.run(
+        ["ffmpeg", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=subprocess_env(),
+    )
+    match = _MEAN_VOLUME.search(result.stderr)
+    return float(match.group(1)) if match else None
 
 
 def audio_duration_seconds(path: Path) -> float | None:

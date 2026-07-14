@@ -1,7 +1,13 @@
 import logging
+import shutil
+import tempfile
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import replace
 from functools import partial
+from pathlib import Path
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -9,7 +15,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import SessionLocal, get_db
 from app.core.exceptions import ConflictError, InvalidInputError, NotFoundError
-from app.engines.base import CommandCancelled, ProgressCallback, TrainingSpec
+from app.engines.base import (
+    CancelCheck,
+    CommandCancelled,
+    ProgressCallback,
+    TrainingSpec,
+    audio_duration_seconds,
+)
 from app.engines.factory import get_engine_set
 from app.features.trainings import crud
 from app.features.trainings.models import TrainingJob, TrainingStatus
@@ -58,8 +70,15 @@ class TrainingService:
         return job
 
 
+# Progress slice reserved for dataset cleanup before the trainer's own budget
+# (which is rescaled into the remaining 8~100%). The frontend stage bar mirrors
+# these boundaries (TrainingProgress.tsx).
+_CLEANUP_END = 0.08
+
+
 def execute_training(job_id: int) -> None:
-    """Background entrypoint: runs the trainer and persists the outcome."""
+    """Background entrypoint: cleans the dataset, runs the trainer, and
+    persists the outcome (including the voice register for auto key)."""
     with SessionLocal() as db:
         job = crud.get_job(db, job_id)
         if job is None:
@@ -68,10 +87,27 @@ def execute_training(job_id: int) -> None:
         spec = _build_spec(voice_id, job.epochs)
         crud.set_running(db, job_id)
     should_cancel = partial(cancellation.is_cancel_requested, job_id)
+    write_progress = _progress_writer(job_id)
+
+    def trainer_progress(progress: float) -> None:
+        write_progress(_CLEANUP_END + (1.0 - _CLEANUP_END) * progress)
+
     try:
-        model_path = get_engine_set().trainer.train(
-            spec, _progress_writer(job_id), should_cancel
-        )
+        with tempfile.TemporaryDirectory(prefix="revoice_clean_") as staging:
+            if get_settings().training_dataset_cleanup:
+                cleaned_dir = _clean_dataset(
+                    spec.dataset_dir, Path(staging), write_progress, should_cancel
+                )
+                spec = replace(spec, dataset_dir=cleaned_dir)
+            write_progress(_CLEANUP_END)
+            model_path = get_engine_set().trainer.train(
+                spec, trainer_progress, should_cancel
+            )
+            # The cleaned vocals are the best material to measure the voice
+            # register (auto key matching) from — raw uploads may carry BGM.
+            median_f0 = get_engine_set().pitch_analyzer.median_f0(
+                [path for path in sorted(spec.dataset_dir.iterdir()) if path.is_file()]
+            )
     except CommandCancelled:
         logger.info("Training job %s cancelled by user.", job_id)
         with SessionLocal() as db:
@@ -97,6 +133,92 @@ def execute_training(job_id: int) -> None:
     with SessionLocal() as db:
         crud.set_completed(db, job_id)
         voices_crud.set_voice_status(db, voice_id, VoiceStatus.READY, str(model_path))
+        if median_f0 is not None:
+            voices_crud.set_median_f0(db, voice_id, median_f0)
+
+
+@contextmanager
+def _ticking(
+    on_progress: ProgressCallback, start: float, end: float, estimate_seconds: float
+) -> Iterator[None]:
+    """Advance progress by elapsed/estimate while a silent external tool runs
+    (audio-separator prints nothing parseable on pipes), capped just short of
+    the slice end so the bar never claims a step it hasn't finished."""
+    stop = threading.Event()
+
+    def run() -> None:
+        began = time.monotonic()
+        while not stop.wait(2.0):
+            fraction = min((time.monotonic() - began) / estimate_seconds, 0.97)
+            on_progress(start + (end - start) * fraction)
+
+    thread = threading.Thread(target=run, daemon=True)
+    if estimate_seconds > 0:
+        thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        if thread.is_alive():
+            thread.join(timeout=6.0)
+
+
+# Cleanup runs two separator-grade passes per file (vocals + de-reverb), plus
+# per-invocation model-load overhead.
+_CLEANUP_OVERHEAD_S = 20.0
+_FALLBACK_DURATION_S = 240.0
+
+
+def _clean_dataset(
+    dataset_dir: Path,
+    staging_dir: Path,
+    on_progress: ProgressCallback,
+    should_cancel: CancelCheck,
+) -> Path:
+    """Run each dataset file through vocal separation (+ de-reverb) so training
+    sees dry, accompaniment-free vocals even when the user uploaded karaoke or
+    phone recordings with background music.
+
+    A file whose cleanup fails is used as-is — training on raw audio beats
+    failing the whole job. Returns the directory the trainer should read.
+    """
+    engines = get_engine_set()
+    files = [path for path in sorted(dataset_dir.iterdir()) if path.is_file()]
+    cleaned = staging_dir / "cleaned"
+    cleaned.mkdir(parents=True, exist_ok=True)
+    passes = 1 if engines.dereverber is None else 2
+    durations = [audio_duration_seconds(path) or _FALLBACK_DURATION_S for path in files]
+    total_duration = sum(durations) or 1.0
+    completed = 0.0
+    for position, (path, duration) in enumerate(zip(files, durations)):
+        if should_cancel():
+            raise CommandCancelled()
+        slice_start = _CLEANUP_END * completed / total_duration
+        slice_end = _CLEANUP_END * (completed + duration) / total_duration
+        estimate = (
+            _CLEANUP_OVERHEAD_S * passes
+            + duration * get_settings().separation_speed_factor * passes
+        )
+        work = staging_dir / f"work_{position}"
+        with _ticking(on_progress, slice_start, slice_end, estimate):
+            try:
+                separated = engines.separator.separate(path, work, _ignore_progress)
+                vocals = separated.vocals
+                if engines.dereverber is not None:
+                    vocals = engines.dereverber.dereverb(vocals, work)
+                shutil.copyfile(vocals, cleaned / f"{path.stem}_clean.wav")
+            except Exception:  # noqa: BLE001 — per-file fallback, never fail the job here
+                logger.exception("Dataset cleanup failed for %s; using the raw file.", path)
+                shutil.copyfile(path, cleaned / path.name)
+        # Free the stems as we go: datasets can be long and disk-heavy.
+        shutil.rmtree(work, ignore_errors=True)
+        completed += duration
+        on_progress(slice_end)
+    return cleaned
+
+
+def _ignore_progress(progress: float) -> None:
+    """Cleanup progress advances per file instead."""
 
 
 def _build_spec(voice_id: int, epochs: int) -> TrainingSpec:
